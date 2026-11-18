@@ -1,21 +1,53 @@
 const fs = require('fs');
+const path = require('path');
 const mongoose = require('mongoose');
 const pdfParse = require('pdf-parse');
 const Resume = require('../models/Resume');
 const Job = require('../models/Job');
 const { generateContent, parseAIJson } = require('../services/aiService');
 
+// Reads the saved PDF and returns its text.
+// Throws a clear error if the file is missing from the uploads folder.
+const extractResumeText = async (resume) => {
+  const absolutePath = path.resolve(resume.filePath);
+
+  if (!fs.existsSync(absolutePath)) {
+    const err = new Error('Your resume file is missing on the server. Please upload it again.');
+    err.status = 409;
+    throw err;
+  }
+
+  const dataBuffer = fs.readFileSync(absolutePath);
+  const pdfData = await pdfParse(dataBuffer);
+  return pdfData.text || '';
+};
+
+// Sends the right status and message back to the page.
+// Errors from the AI service carry a status and a friendly message, so they are passed through.
+// Anything else gets the fallback message.
+const sendError = (res, error, fallbackMessage, label) => {
+  console.error(`${label} error:`, error.message);
+
+  if (error.status) {
+    return res.status(error.status).json({ message: error.message });
+  }
+
+  return res.status(500).json({ message: fallbackMessage });
+};
+
 const resumeAnalysis = async (req, res) => {
   try {
-    const resume = await Resume.findOne({ userId: req.user.id }).sort({ createdAt: -1 });
+    const resume = await Resume.findOne({ userId: req.user._id }).sort({ createdAt: -1 });
 
     if (!resume) {
       return res.status(404).json({ message: 'No resume found. Please upload a resume first.' });
     }
 
-    const dataBuffer = fs.readFileSync(resume.filePath);
-    const pdfData = await pdfParse(dataBuffer);
-    const resumeText = pdfData.text;
+    // Reuse saved text when it exists, so the PDF is not parsed again.
+    let resumeText = resume.extractedText;
+    if (!resumeText) {
+      resumeText = await extractResumeText(resume);
+    }
 
     if (!resumeText || resumeText.trim().length < 20) {
       return res.status(400).json({ message: 'Could not extract readable text from this PDF.' });
@@ -60,8 +92,7 @@ ${resumeText.slice(0, 4000)}
 
     res.status(200).json(analysis);
   } catch (error) {
-    console.error('Resume analysis error:', error.message);
-    res.status(500).json({ message: 'Failed to analyze resume' });
+    sendError(res, error, 'Failed to analyze resume', 'Resume analysis');
   }
 };
 
@@ -98,7 +129,7 @@ const jobMatch = async (req, res) => {
         return res.status(404).json({ message: 'Job not found' });
       }
       jobContext = `Job Title: ${job.title}
-Job Description: ${job.description}
+Job Description: ${job.description.slice(0, 4000)}
 Required Skills: ${(job.skills || []).join(', ')}`;
     } else {
       jobContext = `Job Description: ${jobDescription.trim().slice(0, 4000)}`;
@@ -107,9 +138,7 @@ Required Skills: ${(job.skills || []).join(', ')}`;
     // Use saved text if we have it; otherwise parse the PDF and save the text for next time
     let resumeText = resume.extractedText;
     if (!resumeText) {
-      const dataBuffer = fs.readFileSync(resume.filePath);
-      const pdfData = await pdfParse(dataBuffer);
-      resumeText = pdfData.text;
+      resumeText = await extractResumeText(resume);
 
       if (!resumeText || resumeText.trim().length < 20) {
         return res.status(400).json({ message: 'Could not extract readable text from this resume' });
@@ -156,8 +185,7 @@ ${resumeText.slice(0, 4000)}
 
     res.status(200).json(matchResult);
   } catch (error) {
-    console.error('Job match error:', error.message);
-    res.status(500).json({ message: 'Failed to match job' });
+    sendError(res, error, 'Failed to match job', 'Job match');
   }
 };
 
@@ -188,8 +216,7 @@ Rules:
 
     res.status(200).json(result);
   } catch (error) {
-    console.error('Interview generate error:', error.message);
-    res.status(500).json({ message: 'Failed to generate interview questions' });
+    sendError(res, error, 'Failed to generate interview questions', 'Interview generate');
   }
 };
 
@@ -224,9 +251,59 @@ Candidate's Answer: ${answer}`;
 
     res.status(200).json(result);
   } catch (error) {
-    console.error('Interview evaluate error:', error.message);
-    res.status(500).json({ message: 'Failed to evaluate answer' });
+    sendError(res, error, 'Failed to evaluate answer', 'Interview evaluate');
   }
 };
 
-module.exports = { resumeAnalysis, jobMatch, interviewGenerate, interviewEvaluate };
+// Writes a model answer for one interview question, so a student who is stuck can learn the structure.
+const interviewSampleAnswer = async (req, res) => {
+  try {
+    const { question, role } = req.body;
+
+    if (!question || typeof question !== 'string' || !question.trim()) {
+      return res.status(400).json({ message: 'question is required' });
+    }
+
+    const roleText =
+      typeof role === 'string' && role.trim()
+        ? ` for the role of "${role.trim().slice(0, 100)}"`
+        : '';
+
+    const prompt = `You are an expert technical interviewer. Write a strong sample answer to the interview question below${roleText}, written the way a good candidate would say it out loud. Respond with ONLY valid JSON (no markdown, no code fences, no extra text) in exactly this structure:
+{
+  "sampleAnswer": "A clear answer in first person.",
+  "keyPoints": ["point1", "point2", "point3"]
+}
+
+Rules:
+- "sampleAnswer": 80-150 words, simple English, first person, easy to say out loud.
+- "keyPoints": 3-4 short points the answer covers, so the student can learn the structure.
+
+Question: ${question.trim().slice(0, 500)}`;
+
+    const rawResponse = await generateContent(prompt);
+    const result = parseAIJson(rawResponse);
+
+    const isValid =
+      result &&
+      typeof result.sampleAnswer === 'string' &&
+      result.sampleAnswer.trim().length > 0 &&
+      Array.isArray(result.keyPoints);
+
+    if (!isValid) {
+      return res.status(502).json({ message: 'AI returned an unexpected format. Please try again.' });
+    }
+
+    res.status(200).json(result);
+  } catch (error) {
+    sendError(res, error, 'Failed to create a sample answer', 'Interview sample');
+  }
+};
+
+module.exports = {
+  resumeAnalysis,
+  jobMatch,
+  interviewGenerate,
+  interviewEvaluate,
+  interviewSampleAnswer,
+};
