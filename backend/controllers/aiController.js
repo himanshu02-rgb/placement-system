@@ -37,7 +37,23 @@ const sendError = (res, error, fallbackMessage, label) => {
 
 const resumeAnalysis = async (req, res) => {
   try {
-    const resume = await Resume.findOne({ userId: req.user._id }).sort({ createdAt: -1 });
+    // Analyze the resume the student picked. Without a resumeId, use the newest resume.
+    const { resumeId } = req.body || {};
+
+    let resume;
+    if (resumeId) {
+      if (!mongoose.Types.ObjectId.isValid(resumeId)) {
+        return res.status(400).json({ message: 'A valid resumeId is required' });
+      }
+
+      // Ownership check: the resume must belong to the logged-in user.
+      resume = await Resume.findOne({ _id: resumeId, userId: req.user._id });
+      if (!resume) {
+        return res.status(404).json({ message: 'Resume not found' });
+      }
+    } else {
+      resume = await Resume.findOne({ userId: req.user._id }).sort({ createdAt: -1 });
+    }
 
     if (!resume) {
       return res.status(404).json({ message: 'No resume found. Please upload a resume first.' });

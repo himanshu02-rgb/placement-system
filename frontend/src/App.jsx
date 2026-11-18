@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
@@ -11,7 +11,6 @@ import Jobs from './pages/Jobs';
 import JobDetails from './pages/JobDetails';
 import Applications from './pages/Applications';
 import Resume from './pages/Resume';
-import ResumeAnalyzer from './pages/ResumeAnalyzer';
 import JobMatcher from './pages/JobMatcher';
 import AIInterview from './pages/AIInterview';
 import CreateJob from './pages/CreateJob';
@@ -53,14 +52,8 @@ function App() {
             </ProtectedRoute>
           }
         />
-        <Route
-          path="/resume-analyzer"
-          element={
-            <ProtectedRoute>
-              <ResumeAnalyzer />
-            </ProtectedRoute>
-          }
-        />
+        {/* Old page, now part of /resume. Keeps existing links working. */}
+        <Route path="/resume-analyzer" element={<Navigate to="/resume" replace />} />
         <Route
           path="/job-matcher"
           element={
