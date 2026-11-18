@@ -1,7 +1,9 @@
 import { Routes, Route } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import ProtectedRoute from './components/ProtectedRoute';
+import AdminRoute from './components/AdminRoute';
 
+import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
@@ -13,8 +15,8 @@ import ResumeAnalyzer from './pages/ResumeAnalyzer';
 import JobMatcher from './pages/JobMatcher';
 import AIInterview from './pages/AIInterview';
 import CreateJob from './pages/CreateJob';
-import AdminRoute from './components/AdminRoute';
-import Home from './pages/Home';
+import MyJobs from './pages/MyJobs';
+import JobApplicants from './pages/JobApplicants';
 
 function App() {
   return (
@@ -26,7 +28,7 @@ function App() {
         <Route path="/register" element={<Register />} />
         <Route path="/jobs" element={<Jobs />} />
         <Route path="/jobs/:id" element={<JobDetails />} />
-        
+
         <Route
           path="/dashboard"
           element={
@@ -75,13 +77,31 @@ function App() {
             </ProtectedRoute>
           }
         />
+
+        {/* Recruiter-only routes */}
         <Route
-            path="/create-job"
-            element={
-              <AdminRoute>
-                <CreateJob />
-              </AdminRoute>
-            }
+          path="/create-job"
+          element={
+            <AdminRoute>
+              <CreateJob />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/my-jobs"
+          element={
+            <AdminRoute>
+              <MyJobs />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/my-jobs/:id/applicants"
+          element={
+            <AdminRoute>
+              <JobApplicants />
+            </AdminRoute>
+          }
         />
       </Routes>
     </div>

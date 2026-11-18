@@ -1,4 +1,5 @@
 const Job = require('../models/Job');
+const Application = require('../models/Application');
 const pdfParse = require('pdf-parse');
 
 const createJob = async (req, res) => {
@@ -64,6 +65,59 @@ const getJobById = async (req, res) => {
   }
 };
 
+// Recruiter's own jobs, each with an applicant count.
+const getMyJobs = async (req, res) => {
+  try {
+    const jobs = await Job.find({ postedBy: req.user._id }).sort({ createdAt: -1 }).lean();
+
+    const jobIds = jobs.map((job) => job._id);
+    const counts = await Application.aggregate([
+      { $match: { jobId: { $in: jobIds } } },
+      { $group: { _id: '$jobId', count: { $sum: 1 } } },
+    ]);
+
+    const countByJob = new Map(counts.map((c) => [c._id.toString(), c.count]));
+
+    const result = jobs.map((job) => ({
+      ...job,
+      applicantCount: countByJob.get(job._id.toString()) || 0,
+    }));
+
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Applicants for one job. Only the recruiter who posted it can see them.
+const getJobApplicants = async (req, res) => {
+  try {
+    const job = await Job.findById(req.params.id);
+
+    if (!job) {
+      return res.status(404).json({ message: 'Job not found' });
+    }
+
+    if (String(job.postedBy) !== String(req.user._id)) {
+      return res
+        .status(403)
+        .json({ message: 'You can only view applicants for your own jobs' });
+    }
+
+    const applications = await Application.find({ jobId: job._id })
+      .populate('userId', 'name email')
+      .populate('resumeId', 'fileName createdAt')
+      .sort({ createdAt: -1 });
+
+    res.json({
+      job: { _id: job._id, title: job.title, company: job.company },
+      applications,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 // Reads text out of an uploaded JD PDF and returns it. Does not save anything to the database.
 const parseJobDescription = async (req, res) => {
   try {
@@ -92,4 +146,11 @@ const parseJobDescription = async (req, res) => {
   }
 };
 
-module.exports = { createJob, getJobs, getJobById, parseJobDescription };
+module.exports = {
+  createJob,
+  getJobs,
+  getJobById,
+  getMyJobs,
+  getJobApplicants,
+  parseJobDescription,
+};

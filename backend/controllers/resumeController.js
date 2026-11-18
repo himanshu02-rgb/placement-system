@@ -1,4 +1,9 @@
+const fs = require('fs');
+const path = require('path');
+const mongoose = require('mongoose');
 const Resume = require('../models/Resume');
+const Application = require('../models/Application');
+const Job = require('../models/Job');
 
 const uploadResume = async (req, res) => {
   try {
@@ -46,4 +51,48 @@ const getMyResumes = async (req, res) => {
   }
 };
 
-module.exports = { uploadResume, getMyResume, getMyResumes };
+// Streams a PDF to:
+//  - the student who owns it, or
+//  - a recruiter, but only if that student applied to one of the recruiter's jobs with this resume.
+const getResumeFile = async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ message: 'Resume not found' });
+    }
+
+    const resume = await Resume.findById(req.params.id);
+    if (!resume) {
+      return res.status(404).json({ message: 'Resume not found' });
+    }
+
+    const isOwner = String(resume.userId) === String(req.user._id);
+
+    let isRecruiterForThisResume = false;
+    if (!isOwner && req.user.role === 'admin') {
+      const applications = await Application.find({ resumeId: resume._id }).select('jobId');
+      const jobIds = applications.map((a) => a.jobId);
+      const ownsJob = await Job.exists({ _id: { $in: jobIds }, postedBy: req.user._id });
+      isRecruiterForThisResume = Boolean(ownsJob);
+    }
+
+    if (!isOwner && !isRecruiterForThisResume) {
+      return res.status(403).json({ message: 'You are not allowed to view this resume' });
+    }
+
+    // path.resolve works for both old relative paths and new absolute paths.
+    const absolutePath = path.resolve(resume.filePath);
+    if (!fs.existsSync(absolutePath)) {
+      return res.status(404).json({ message: 'Resume file is missing on the server' });
+    }
+
+    res.sendFile(absolutePath, (err) => {
+      if (err && !res.headersSent) {
+        res.status(500).json({ message: 'Could not send the file' });
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+module.exports = { uploadResume, getMyResume, getMyResumes, getResumeFile };

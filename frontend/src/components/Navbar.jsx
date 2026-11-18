@@ -14,7 +14,10 @@ const Navbar = () => {
   if (user) {
     links.push({ to: '/dashboard', label: 'Dashboard' });
     if (isAdmin) {
-      links.push({ to: '/create-job', label: 'Post a Job' });
+      links.push(
+        { to: '/my-jobs', label: 'My jobs' },
+        { to: '/create-job', label: 'Post a job' }
+      );
     } else {
       links.push(
         { to: '/applications', label: 'My Applications' },
