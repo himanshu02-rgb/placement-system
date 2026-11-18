@@ -14,19 +14,19 @@ import JobMatcher from './pages/JobMatcher';
 import AIInterview from './pages/AIInterview';
 import CreateJob from './pages/CreateJob';
 import AdminRoute from './components/AdminRoute';
-
+import Home from './pages/Home';
 
 function App() {
   return (
     <div>
       <Navbar />
       <Routes>
-        <Route path="/" element={<Jobs />} />
+        <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/jobs" element={<Jobs />} />
         <Route path="/jobs/:id" element={<JobDetails />} />
-
+        
         <Route
           path="/dashboard"
           element={

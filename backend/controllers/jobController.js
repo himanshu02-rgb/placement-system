@@ -1,4 +1,5 @@
 const Job = require('../models/Job');
+const pdfParse = require('pdf-parse');
 
 const createJob = async (req, res) => {
   try {
@@ -63,4 +64,32 @@ const getJobById = async (req, res) => {
   }
 };
 
-module.exports = { createJob, getJobs, getJobById };
+// Reads text out of an uploaded JD PDF and returns it. Does not save anything to the database.
+const parseJobDescription = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'Please attach a PDF under the field name "jd"' });
+    }
+
+    const data = await pdfParse(req.file.buffer);
+
+    // Tidy the spacing from the PDF so the textarea reads cleanly.
+    const text = data.text
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+
+    if (!text) {
+      return res
+        .status(400)
+        .json({ message: 'No readable text found. The PDF may be a scanned image.' });
+    }
+
+    res.json({ text });
+  } catch (error) {
+    console.error('parseJobDescription error:', error);
+    res.status(500).json({ message: 'Could not read this PDF' });
+  }
+};
+
+module.exports = { createJob, getJobs, getJobById, parseJobDescription };

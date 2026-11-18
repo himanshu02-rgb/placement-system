@@ -1,11 +1,16 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
+import PageShell from '../components/PageShell';
+import PageHeader from '../components/PageHeader';
+import EmptyState from '../components/EmptyState';
 
-const statusColors = {
-  Applied: 'bg-blue-50 text-blue-600',
-  Shortlisted: 'bg-amber-50 text-amber-600',
-  Selected: 'bg-green-50 text-green-600',
-  Rejected: 'bg-red-50 text-red-600',
+const STATUS_ORDER = ['Applied', 'Shortlisted', 'Selected', 'Rejected'];
+
+const STATUS_STYLES = {
+  Applied: { badge: 'bg-sky-50 text-sky-700 ring-sky-200', dot: 'bg-sky-500', count: 'text-sky-700' },
+  Shortlisted: { badge: 'bg-amber-50 text-amber-700 ring-amber-200', dot: 'bg-amber-500', count: 'text-amber-700' },
+  Selected: { badge: 'bg-emerald-50 text-emerald-700 ring-emerald-200', dot: 'bg-emerald-500', count: 'text-emerald-700' },
+  Rejected: { badge: 'bg-rose-50 text-rose-700 ring-rose-200', dot: 'bg-rose-500', count: 'text-rose-700' },
 };
 
 const Applications = () => {
@@ -26,36 +31,99 @@ const Applications = () => {
     fetchApps();
   }, []);
 
-  return (
-    <div className="max-w-3xl mx-auto mt-10 p-6">
-      <h2 className="text-2xl font-bold text-slate-800 mb-1">My Applications</h2>
-      <p className="text-slate-500 text-sm mb-6">Track the status of jobs you've applied to</p>
+  const counts = STATUS_ORDER.reduce((acc, status) => {
+    acc[status] = applications.filter((app) => app.status === status).length;
+    return acc;
+  }, {});
 
-      {loading ? (
-        <p className="text-slate-500 text-center py-10">Loading...</p>
-      ) : applications.length === 0 ? (
-        <p className="text-slate-500 text-center py-10">You haven't applied to any jobs yet.</p>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {applications.map((app) => (
-            <div
-              key={app._id}
-              className="bg-white border border-slate-200 rounded-xl p-5 flex justify-between items-center shadow-sm"
-            >
-              <div>
-                <p className="font-semibold text-slate-800">{app.jobId?.title}</p>
-                <p className="text-sm text-slate-500 mt-0.5">
-                  {app.jobId?.company} · {app.jobId?.location}
+  return (
+    <PageShell>
+      <div className="max-w-4xl mx-auto">
+        <PageHeader
+          eyebrow="Student"
+          title="My applications"
+          subtitle="Track every job you've applied to and its current status."
+        />
+
+        {/* Status summary */}
+        {!loading && applications.length > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+            {STATUS_ORDER.map((status) => (
+              <div
+                key={status}
+                className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm"
+              >
+                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                  {status}
+                </p>
+                <p className={`text-2xl font-bold mt-1 ${STATUS_STYLES[status].count}`}>
+                  {counts[status]}
                 </p>
               </div>
-              <span className={`text-xs font-medium px-3 py-1.5 rounded-full ${statusColors[app.status]}`}>
-                {app.status}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+            ))}
+          </div>
+        )}
+
+        {/* List */}
+        {loading ? (
+          <div className="flex flex-col gap-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="bg-white border border-slate-200 rounded-xl p-5 animate-pulse">
+                <div className="h-4 w-1/3 bg-slate-200 rounded mb-2" />
+                <div className="h-3 w-1/4 bg-slate-100 rounded" />
+              </div>
+            ))}
+          </div>
+        ) : applications.length === 0 ? (
+          <EmptyState
+            icon="📭"
+            title="No applications yet"
+            message="Once you apply to a job, it will show up here with its status."
+            actionLabel="Browse jobs"
+            actionTo="/jobs"
+          />
+        ) : (
+          <div className="flex flex-col gap-3">
+            {applications.map((app) => {
+              const style = STATUS_STYLES[app.status] || STATUS_STYLES.Applied;
+              const initial = app.jobId?.company?.charAt(0)?.toUpperCase() || '?';
+              const subtitle = [app.jobId?.company, app.jobId?.location].filter(Boolean).join(' · ');
+
+              return (
+                <div
+                  key={app._id}
+                  className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow flex items-center justify-between gap-4"
+                >
+                  <div className="flex items-center gap-4 min-w-0">
+                    <div className="h-11 w-11 shrink-0 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-white flex items-center justify-center font-semibold">
+                      {initial}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-slate-800 truncate">
+                        {app.jobId?.title || 'Job no longer available'}
+                      </p>
+                      <p className="text-sm text-slate-500 truncate">{subtitle || '—'}</p>
+                      {app.createdAt && (
+                        <p className="text-xs text-slate-400 mt-1">
+                          Applied {new Date(app.createdAt).toLocaleDateString()}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <span
+                    className={`shrink-0 inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full ring-1 ring-inset ${style.badge}`}
+                  >
+                    <span className={`h-1.5 w-1.5 rounded-full ${style.dot}`} />
+                    {app.status}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </PageShell>
   );
 };
 

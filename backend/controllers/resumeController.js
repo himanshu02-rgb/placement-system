@@ -18,6 +18,7 @@ const uploadResume = async (req, res) => {
   }
 };
 
+// Returns the newest resume (used by existing pages)
 const getMyResume = async (req, res) => {
   try {
     const resume = await Resume.findOne({ userId: req.user._id }).sort({ createdAt: -1 });
@@ -32,4 +33,17 @@ const getMyResume = async (req, res) => {
   }
 };
 
-module.exports = { uploadResume, getMyResume };
+// Returns ALL resumes belonging to the logged-in user, newest first
+const getMyResumes = async (req, res) => {
+  try {
+    const resumes = await Resume.find({ userId: req.user._id })
+      .select('-extractedText') // keep the list response small
+      .sort({ createdAt: -1 });
+
+    res.json(resumes);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+module.exports = { uploadResume, getMyResume, getMyResumes };

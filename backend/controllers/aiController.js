@@ -1,4 +1,5 @@
 const fs = require('fs');
+const mongoose = require('mongoose');
 const pdfParse = require('pdf-parse');
 const Resume = require('../models/Resume');
 const Job = require('../models/Job');
@@ -66,26 +67,56 @@ ${resumeText.slice(0, 4000)}
 
 const jobMatch = async (req, res) => {
   try {
-    const { jobId } = req.body;
-    if (!jobId) {
-      return res.status(400).json({ message: 'jobId is required' });
+    const { resumeId, jobId, jobDescription } = req.body;
+
+    if (!resumeId || !mongoose.Types.ObjectId.isValid(resumeId)) {
+      return res.status(400).json({ message: 'A valid resumeId is required' });
     }
 
-    const job = await Job.findById(jobId);
-    if (!job) {
-      return res.status(404).json({ message: 'Job not found' });
+    const hasPostedJob = Boolean(jobId);
+    const hasPastedJd = typeof jobDescription === 'string' && jobDescription.trim().length > 0;
+
+    if (!hasPostedJob && !hasPastedJd) {
+      return res.status(400).json({ message: 'Provide either a jobId or a jobDescription' });
     }
 
-    const resume = await Resume.findOne({ userId: req.user.id }).sort({ createdAt: -1 });
+    // Ownership check: the resume must belong to the logged-in user.
+    // Returns 404 (not 403) so the response doesn't reveal whether the resume exists.
+    const resume = await Resume.findOne({ _id: resumeId, userId: req.user._id });
     if (!resume) {
-      return res.status(404).json({ message: 'No resume found. Please upload a resume first.' });
+      return res.status(404).json({ message: 'Resume not found' });
     }
 
+    // Build the job context from either a posted job or pasted text
+    let jobContext;
+    if (hasPostedJob) {
+      if (!mongoose.Types.ObjectId.isValid(jobId)) {
+        return res.status(404).json({ message: 'Job not found' });
+      }
+      const job = await Job.findById(jobId);
+      if (!job) {
+        return res.status(404).json({ message: 'Job not found' });
+      }
+      jobContext = `Job Title: ${job.title}
+Job Description: ${job.description}
+Required Skills: ${(job.skills || []).join(', ')}`;
+    } else {
+      jobContext = `Job Description: ${jobDescription.trim().slice(0, 4000)}`;
+    }
+
+    // Use saved text if we have it; otherwise parse the PDF and save the text for next time
     let resumeText = resume.extractedText;
     if (!resumeText) {
       const dataBuffer = fs.readFileSync(resume.filePath);
       const pdfData = await pdfParse(dataBuffer);
       resumeText = pdfData.text;
+
+      if (!resumeText || resumeText.trim().length < 20) {
+        return res.status(400).json({ message: 'Could not extract readable text from this resume' });
+      }
+
+      resume.extractedText = resumeText;
+      await resume.save();
     }
 
     const prompt = `You are an expert technical recruiter. Compare the candidate's resume with the job description below and respond with ONLY valid JSON (no markdown, no code fences, no extra text) in exactly this structure:
@@ -102,9 +133,7 @@ Rules:
 - "missingSkills": skills required by the job but not found in the resume.
 - "recommendations": 3-5 concrete suggestions to improve fit for this role.
 
-Job Title: ${job.title}
-Job Description: ${job.description}
-Required Skills: ${job.skills.join(', ')}
+${jobContext}
 
 Resume text:
 """
